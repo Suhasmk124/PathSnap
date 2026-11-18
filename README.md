@@ -24,8 +24,10 @@ LAN IP. The UI server uses Python's standard library.
 
 Replace the example IP with Laptop 1's actual address. Both laptops need to be
 on the same network, and Laptop 1 must accept incoming TCP on the chosen port.
-Open http://127.0.0.1:8501 on Laptop 2. The in-page map works without tile-server
-access. Its overlays represent raw GPS observations and predicted directed arcs.
+Open http://127.0.0.1:8501 on Laptop 2. The OpenStreetMap basemap opens
+automatically and fits the route after reconstruction. Use **Route result** to
+switch between Viterbi, classifier-only and a comparison overlay. The map needs
+an internet connection to load Leaflet and the street tiles.
 
 ## Demo and evidence
 
@@ -46,7 +48,8 @@ access. Its overlays represent raw GPS observations and predicted directed arcs.
        python -m scripts.validate --ui http://127.0.0.1:8501
 
 The API contract is GET /trips and POST /predict/{trip_id}. Responses expose
-GPS, predicted arcs and aggregate metrics. The scoring service reads a
+GPS, predicted arcs and aggregate metrics. The UI requests '?comparison=1'
+for the optional classifier-only route. The scoring service reads a
 reference separately after inference. Missing references return unavailable
 metric values. Inference time in the UI excludes scoring and HTTP latency.
 The service caches geometry, the candidate index, and the road graph for

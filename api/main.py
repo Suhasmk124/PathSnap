@@ -5,7 +5,7 @@ import json
 import logging
 import os
 from time import perf_counter
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from .service import PathSnap, logger
 
@@ -21,11 +21,11 @@ def create_app(dataset_dir=None):
         return list(service.trip_dirs)
 
     @app.post("/predict/{trip_id}")
-    def predict(trip_id: str):
+    def predict(trip_id: str, comparison: bool = False):
         if trip_id not in service.trip_dirs:
             raise HTTPException(status_code=404, detail="Trip not found")
         start = perf_counter()
-        result = service.predict(trip_id)
+        result = service.predict(trip_id, comparison=comparison)
         logger.info("POST /predict/%s 200 | %d GPS points | %.1f ms request",
                     trip_id,result["n_points"],(perf_counter()-start)*1000)
         return result
@@ -51,14 +51,15 @@ def run_reference(service,host,port):
                 self.send_json(404,{"detail":"Not found"})
 
         def do_POST(self):
-            path=urlsplit(self.path).path
+            request = urlsplit(self.path)
+            path = request.path
             prefix="/predict/"
             trip=path[len(prefix):] if path.startswith(prefix) else None
             if trip not in service.trip_dirs:
                 self.send_json(404,{"detail":"Trip not found"})
                 return
             start=perf_counter()
-            result=service.predict(trip)
+            result=service.predict(trip, comparison=parse_qs(request.query).get("comparison") == ["1"])
             self.send_json(200,result)
             logger.info("POST /predict/%s 200 | %d GPS points | %.1f ms request",
                         trip,result["n_points"],(perf_counter()-start)*1000)

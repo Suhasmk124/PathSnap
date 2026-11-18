@@ -1,9 +1,9 @@
 "use strict";
 const get = id => document.getElementById(id);
-const form = get("trip-form"), select = get("trip"), run = get("run"), canvas = get("map");
-const ctx = canvas.getContext("2d");
-const gpsColor = "#275dae", routeColor = "#0c806e";
-let data, world, zoom = 1, dx = 0, dy = 0, dragging;
+const form = get("trip-form"), select = get("trip"), run = get("run");
+const gpsColor = "#275dae", routeColor = "#006253", classifierColor = "#a0470c";
+const routeView = get("route-view");
+let data, street, streetPromise;
 const timed = new Intl.NumberFormat("en", {maximumFractionDigits: 1});
 const percentage = new Intl.NumberFormat("en", {style: "percent", maximumFractionDigits: 2});
 
@@ -34,24 +34,32 @@ async function init() {
     select.replaceChildren(new Option("No trips loaded"));
   }
 }
-function bbox(points) {
-  const extents = [Infinity, Infinity, -Infinity, -Infinity];
-  for (const [latitude, longitude] of points) {
-    extents[0] = Math.min(extents[0], latitude); extents[1] = Math.min(extents[1], longitude);
-    extents[2] = Math.max(extents[2], latitude); extents[3] = Math.max(extents[3], longitude);
+function visibleRoutes() {
+  if (!data) return [];
+  const routes = [];
+  if (routeView.value !== "classifier") {
+    routes.push({segments: data.predicted_route, color: routeColor, dashed: false});
   }
-  return extents;
+  if (routeView.value !== "viterbi") {
+    routes.push({segments: data.classifier_route, color: classifierColor, dashed: true});
+  }
+  return routes;
 }
+
+function syncRouteLegend() {
+  const show = get("route-layer").checked;
+  get("viterbi-key").hidden = !data || !show || routeView.value === "classifier";
+  get("classifier-key").hidden = !data || !show || routeView.value === "viterbi";
+  get("top1_acc_hmm").closest("div").classList.toggle("primary", routeView.value !== "classifier");
+  get("top1_acc_clf").closest("div").classList.toggle("primary", routeView.value === "classifier");
+}
+
 function useResult(result) {
   data = result;
-  const points = [...data.gps, ...data.predicted_route.flatMap(segment => segment.coords)];
-  if (points.length) {
-    const [south, west, north, east] = bbox(points);
-    const lat = (south + north) / 2, lon = (west + east) / 2, lonScale = Math.cos(lat * Math.PI / 180);
-    world = {lat, lon, lonScale, width: (east - west) * lonScale, height: north - south};
-    get("bounds").textContent = lat.toFixed(4) + "°, " + lon.toFixed(4) + "°";
-  } else { world = null; get("bounds").textContent = ""; }
-  get("placeholder").hidden = Boolean(world);
+  const comparison = Array.isArray(data.classifier_route);
+  routeView.disabled = false;
+  routeView.options[1].disabled = routeView.options[2].disabled = !comparison;
+  if (!comparison) routeView.value = "viterbi";
   get("map-subtitle").textContent = data.trip_id + " · " + data.n_points.toLocaleString() + " observations";
   const metrics = data.metrics;
   for (const key of ["top1_acc_hmm", "top1_acc_clf", "route_continuity", "candidate_miss_rate"]) {
@@ -59,7 +67,8 @@ function useResult(result) {
   }
   get("inference_ms").textContent = timed.format(metrics.inference_ms) + " ms";
   get("metric-status").textContent = metrics.top1_acc_hmm == null ? "Reference metrics unavailable" : "Calculated on the API server";
-  fit();
+  syncRouteLegend();
+  showRouteOnMap();
 }
 form.addEventListener("submit", async event => {
   event.preventDefault(); error();
@@ -67,7 +76,7 @@ form.addEventListener("submit", async event => {
   run.disabled = select.disabled = true; run.textContent = "Reconstructing…";
   get("metric-status").textContent = "Running inference…";
   try {
-    useResult(await request("/api/predict/" + encodeURIComponent(id), "POST"));
+    useResult(await request("/api/predict/" + encodeURIComponent(id) + "?comparison=1", "POST"));
     connection("ready", "API connected");
   } catch (e) {
     get("metric-status").textContent = "Prediction failed"; error(e.message);
@@ -75,44 +84,132 @@ form.addEventListener("submit", async event => {
     select.disabled = run.disabled = false; run.textContent = "Reconstruct route →";
   }
 });
-function fit() { zoom = 1; dx = dy = 0; draw(); }
-function changeZoom(factor) { zoom = Math.max(0.7, Math.min(18, zoom * factor)); draw(); }
-function draw() {
-  const {width, height} = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = "#ecf3f2"; ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "#d9e7e4"; ctx.lineWidth = 1; ctx.beginPath();
-  for (let x = ((dx % 48) + 48) % 48; x < width; x += 48) { ctx.moveTo(x, 0); ctx.lineTo(x, height); }
-  for (let y = ((dy % 48) + 48) % 48; y < height; y += 48) { ctx.moveTo(0, y); ctx.lineTo(width, y); }
-  ctx.stroke();
-  if (!world) return;
-  const scale = zoom * Math.min((width - 66) / Math.max(world.width, 1e-6),
-                                (height - 66) / Math.max(world.height, 1e-6));
-  function xy([lat, lon]) {
-    return [width / 2 + (lon - world.lon) * world.lonScale * scale + dx,
-            height / 2 - (lat - world.lat) * scale + dy];
-  }
-  if (get("gps-layer").checked) {
-    ctx.fillStyle = gpsColor; ctx.globalAlpha = 0.53; ctx.beginPath();
-    for (const point of data.gps) { const [x,y] = xy(point); ctx.moveTo(x + 2,y); ctx.arc(x,y,2,0,2*Math.PI); }
-    ctx.fill(); ctx.globalAlpha = 1;
-  }
-  if (get("route-layer").checked) {
-    ctx.strokeStyle = routeColor; ctx.lineWidth = 3.3; ctx.lineCap = "round"; ctx.beginPath();
-    for (const {coords} of data.predicted_route) { ctx.moveTo(...xy(coords[0])); ctx.lineTo(...xy(coords[1])); }
-    ctx.stroke();
+function loadLeaflet() {
+  const base = "https://unpkg.com/leaflet@1.9.4/dist/";
+  const css = document.createElement("link");
+  const script = document.createElement("script");
+  css.rel = "stylesheet";
+  css.href = base + "leaflet.css";
+  css.integrity = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
+  script.src = base + "leaflet.js";
+  script.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
+  const load = element => new Promise((resolve, reject) => {
+    element.crossOrigin = "anonymous";
+    element.onload = resolve;
+    element.onerror = reject;
+    document.head.append(element);
+  });
+  return Promise.all([load(css), load(script)]).catch(error => {
+    css.remove();
+    script.remove();
+    throw error;
+  });
+}
+
+function openStreetMap() {
+  if (streetPromise) return streetPromise;
+  const status = get("map-status");
+  status.textContent = "Loading street map...";
+  streetPromise = loadLeaflet().then(() => {
+    const L = window.L;
+    const map = L.map("street-map", {zoomControl: false, maxZoom: 19});
+    map.setView([0, 0], 2);
+    map.createPane("gps-points").style.zIndex = 390;
+    street = {map, route: L.layerGroup(), gps: L.layerGroup(),
+              gpsRenderer: L.canvas({pane: "gps-points"}), bounds: null};
+    L.control.scale({imperial: false}).addTo(map);
+    let loaded = 0;
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+    }).on("loading", () => { loaded = 0; })
+      .on("tileload", () => {
+        loaded += 1;
+        status.textContent = "";
+      })
+      .on("load", () => {
+        if (!loaded) status.textContent = "Street tiles unavailable. Trip overlays remain visible.";
+      }).addTo(map);
+    new ResizeObserver(() => map.invalidateSize()).observe(get("street-map"));
+    return street;
+  }).catch(error => {
+    streetPromise = null;
+    status.textContent = "Street map could not load. Check your internet connection.";
+    throw error;
+  });
+  return streetPromise;
+}
+
+function syncStreetLayers() {
+  if (!street) return;
+  for (const [layer, toggle] of [[street.route, "route-layer"], [street.gps, "gps-layer"]]) {
+    if (get(toggle).checked) layer.addTo(street.map);
+    else layer.remove();
   }
 }
-get("gps-layer").addEventListener("change", draw);
-get("route-layer").addEventListener("change", draw);
-get("reset").addEventListener("click", fit);
-get("zoom-in").addEventListener("click", () => changeZoom(1.35));
-get("zoom-out").addEventListener("click", () => changeZoom(1 / 1.35));
-canvas.addEventListener("wheel", event => { if (world) {event.preventDefault(); changeZoom(event.deltaY < 0 ? 1.13 : 1/1.13);} }, {passive:false});
-canvas.addEventListener("pointerdown", event => {
-  if (world) { dragging = [event.clientX - dx, event.clientY - dy]; canvas.setPointerCapture(event.pointerId); }
+
+function drawStreetRoutes() {
+  if (!street) return;
+  street.route.clearLayers();
+  const L = window.L;
+  for (const {segments, color, dashed} of visibleRoutes()) {
+    if (!segments.length) continue;
+    const lines = segments.map(({coords}) => coords);
+    const dashArray = dashed ? "8 7" : null;
+    L.polyline(lines, {color: "#fff", weight: 8, opacity: .95,
+                      dashArray, interactive: false}).addTo(street.route);
+    L.polyline(lines, {color, weight: 4.5, dashArray, interactive: false}).addTo(street.route);
+  }
+}
+
+function fitStreet() {
+  if (!street?.bounds?.isValid()) return;
+  street.map.invalidateSize();
+  street.map.fitBounds(street.bounds, {padding: [30, 30], maxZoom: 17, animate: false});
+}
+
+async function showRouteOnMap() {
+  const result = data;
+  try {
+    await openStreetMap();
+  } catch {
+    return;
+  }
+  if (result !== data) return;
+
+  const L = window.L;
+  const segments = [...result.predicted_route, ...(result.classifier_route ?? [])];
+  street.bounds = L.latLngBounds([...result.gps, ...segments.flatMap(({coords}) => coords)]);
+  const hasGeometry = street.bounds.isValid();
+  get("placeholder").hidden = hasGeometry;
+  get("placeholder").textContent = "No route geometry for this trip.";
+  if (hasGeometry) {
+    const center = street.bounds.getCenter();
+    get("bounds").textContent = center.lat.toFixed(4) + "°, " + center.lng.toFixed(4) + "°";
+    fitStreet();
+  } else {
+    get("bounds").textContent = "";
+  }
+  street.gps.clearLayers();
+  for (const point of result.gps) {
+    L.circleMarker(point, {radius: 2.5, stroke: false, fillColor: gpsColor,
+                          fillOpacity: .7, interactive: false,
+                          renderer: street.gpsRenderer}).addTo(street.gps);
+  }
+  drawStreetRoutes();
+  syncStreetLayers();
+}
+
+for (const key of ["gps-layer", "route-layer"]) {
+  get(key).addEventListener("change", () => { syncStreetLayers(); syncRouteLegend(); });
+}
+routeView.addEventListener("change", () => {
+  syncRouteLegend();
+  drawStreetRoutes();
 });
-canvas.addEventListener("pointermove", event => { if (dragging) { dx = event.clientX - dragging[0]; dy = event.clientY - dragging[1]; draw(); } });
-for (const event of ["pointerup", "pointercancel"]) canvas.addEventListener(event, () => {dragging = null;});
-new ResizeObserver(draw).observe(canvas); init();
+get("reset").addEventListener("click", fitStreet);
+get("zoom-in").addEventListener("click", () => street?.map.zoomIn());
+get("zoom-out").addEventListener("click", () => street?.map.zoomOut());
+
+openStreetMap().catch(() => {});
+init();

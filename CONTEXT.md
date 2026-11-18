@@ -28,7 +28,11 @@ first terminal open. In a second PowerShell window at the repo root:
 
 Open http://127.0.0.1:8502. Select 00000076 and reconstruct the route. For
 that trip the expected Top-1 is about 76.18% for the classifier and 89.03% with
-Viterbi. The displayed runtime varies by laptop and whether the trip is cached.
+Viterbi. The OpenStreetMap basemap opens automatically and fits the route after
+reconstruction. Leaflet and the street tiles need internet access. Use **Route
+result** at the top left of the map to show Viterbi, the classifier-only route,
+or both.
+The displayed runtime varies by laptop and whether the trip is cached.
 
 ## 2. Switch to two laptops
 

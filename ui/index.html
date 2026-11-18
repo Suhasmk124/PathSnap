@@ -23,10 +23,17 @@
     <div class="workspace">
       <section class="card map-card" aria-labelledby="map-title">
         <header class="card-head"><div><h2 id="map-title">Trip map</h2><p id="map-subtitle">Select a trip to display results.</p></div>
+          <div class="map-settings"><label for="route-view">Route result</label>
+            <select id="route-view" disabled>
+              <option value="viterbi">Viterbi</option>
+              <option value="classifier" disabled>Classifier only</option>
+              <option value="both" disabled>Compare both</option>
+            </select>
+          </div>
           <div class="layers"><label><input id="gps-layer" type="checkbox" checked> GPS</label><label><input id="route-layer" type="checkbox" checked> Predicted route</label></div>
         </header>
         <div id="viewport">
-          <canvas id="map" aria-label="GPS and predicted route map"></canvas>
+          <div id="street-map" aria-label="OpenStreetMap with GPS and predicted route"></div>
           <div id="placeholder">Run a trip to view its route.</div>
           <div class="map-actions" aria-label="Map zoom">
             <button type="button" id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
@@ -34,14 +41,14 @@
             <button type="button" id="reset" title="Fit route" aria-label="Fit route">↺</button>
           </div>
         </div>
-        <div id="map-footer"><span><i class="dot"></i> GPS observations</span><span><i class="line"></i> Predicted road segments</span><span id="bounds"></span></div>
+        <div id="map-footer"><span><i class="dot"></i> GPS observations</span><span id="viterbi-key" hidden><i class="line"></i> Viterbi</span><span id="classifier-key" hidden><i class="line classifier"></i> Classifier only</span><span id="map-status" role="status"></span><span id="bounds"></span></div>
       </section>
       <aside class="card metrics" aria-labelledby="metric-title">
         <header><h2 id="metric-title">Evaluation metrics</h2><p id="metric-status" role="status">Awaiting prediction</p></header>
         <dl>
           <div class="primary"><dt>Viterbi Top-1</dt><dd id="top1_acc_hmm">—</dd></div>
           <div><dt>Classifier Top-1</dt><dd id="top1_acc_clf">—</dd></div>
-          <div><dt>Route continuity</dt><dd id="route_continuity">—</dd></div>
+          <div><dt>Viterbi route continuity</dt><dd id="route_continuity">—</dd></div>
           <div><dt>Candidate miss rate</dt><dd id="candidate_miss_rate">—</dd></div>
           <div><dt>Inference time</dt><dd id="inference_ms">—</dd></div>
         </dl>

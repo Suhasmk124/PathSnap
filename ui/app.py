@@ -53,7 +53,7 @@ def main():
                 self.send_error(404)
 
         def do_POST(self):
-            if re.fullmatch(r"/api/predict/[0-9]{8}",self.path):
+            if re.fullmatch(r"/api/predict/[0-9]{8}(?:\?comparison=1)?",self.path):
                 self.relay(self.path[4:])
             else:
                 self.send_error(404)

@@ -11,7 +11,7 @@ from src._p1_data import SegmentIndex, load_reference
 from src.eval.metrics import observation_metrics
 from src.features import RADIUS_M, build_candidates
 from src.geo import Geometry, Trip
-from src.hmm import RoadGraph, decode
+from src.hmm import RoadGraph, decode, route_records
 from src.labels import align_reference
 from src.scoring import Scorer
 
@@ -40,7 +40,7 @@ class PathSnap:
         g = Geometry(Trip.load(self.trip_dirs[trip_id]))
         return g, SegmentIndex(g,RADIUS_M), RoadGraph(g)
 
-    def predict(self, trip_id):
+    def predict(self, trip_id, *, comparison=False):
         folder = self.trip_dirs[trip_id]
         start = perf_counter()
         g, index, graph = self.load_context(trip_id)
@@ -49,9 +49,15 @@ class PathSnap:
         result = decode(folder,candidates,geometry=g,graph=graph)
         inference_ms = round((perf_counter()-start)*1000,2)
         metrics = self.evaluate(folder,g,candidates,result["points"])
-        return dict(trip_id=trip_id,n_points=len(g.trip.track),
-                    gps=g.trip.track[g.valid,:2][:,::-1].tolist(),
-                    predicted_route=result["route"],metrics={**metrics,"inference_ms":inference_ms})
+        response = dict(trip_id=trip_id,n_points=len(g.trip.track),
+                        gps=g.trip.track[g.valid,:2][:,::-1].tolist(),
+                        predicted_route=result["route"],metrics={**metrics,"inference_ms":inference_ms})
+        if comparison:
+            points = result["points"]
+            response["classifier_route"] = route_records(
+                g.trip, points["pred_arc_clf"], points["piece_id"]
+            )
+        return response
 
     @staticmethod
     def evaluate(folder,g,candidates,points):
