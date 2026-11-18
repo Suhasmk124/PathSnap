@@ -1,0 +1,24 @@
+{
+  "classifier": {
+    "trips": 10,
+    "aligned_points": 19160,
+    "top1_accuracy": 0.8026617954070981,
+    "candidate_miss_rate": 0.014874739039665972,
+    "route_continuity": 0.7726673502270397,
+    "continuity_transitions": 6827,
+    "decoder_piece_continuity": 0.7726737338044759,
+    "decoder_piece_transitions": 6792,
+    "normalized_route_edit_distance": 0.5273123419656546
+  },
+  "hmm": {
+    "trips": 10,
+    "aligned_points": 19160,
+    "top1_accuracy": 0.8695198329853863,
+    "candidate_miss_rate": 0.014874739039665972,
+    "route_continuity": 0.8907608695652174,
+    "continuity_transitions": 3680,
+    "decoder_piece_continuity": 0.8935528120713306,
+    "decoder_piece_transitions": 3645,
+    "normalized_route_edit_distance": 0.24082444120479934
+  }
+}
