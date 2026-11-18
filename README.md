@@ -4,6 +4,8 @@ PathSnap reconstructs directed road routes from GPS observations. The evaluator
 selects one of the ten loaded trips, sends it to the prediction server and views
 the chosen arcs and evaluation metrics. The UI runs independently from the API.
 
+Start with the [teammate handoff](CONTEXT.md) for setup, demo steps, and project status.
+
 ## Run on two laptops
 
 On Laptop 1, create a Python 3.11+ environment and install the backend
